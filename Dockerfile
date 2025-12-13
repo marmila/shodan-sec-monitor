@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app/ ./app
+COPY scripts/ ./scripts
+
+WORKDIR /app/scripts
+CMD ["python", "shodan_collector.py"]
