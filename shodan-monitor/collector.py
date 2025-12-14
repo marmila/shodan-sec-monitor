@@ -1,44 +1,48 @@
+import os
+import time
+import shodan
 from datetime import datetime
-from typing import Iterable
+from app.db import get_connection, init_db
 from psycopg2.extras import Json
 
-from shodan_monitor.db import get_connection
-from shodan_monitor.shodan_client import ShodanClient
+# Environment variables
+API_KEY = os.getenv("SHODAN_API_KEY")
+TARGETS = os.getenv("TARGETS", "").split(",")
+INTERVAL = int(os.getenv("INTERVAL_SECONDS", 6*3600))  # default: 6 hours
+REQUEST_DELAY = float(os.getenv("REQUEST_DELAY", 1.0))  # seconds between requests
 
+# Initialize DB once
+init_db()
 
-class ShodanCollector:
-    """Batch collector that queries Shodan and stores results in PostgreSQL."""
+while True:
+    conn = get_connection()
+    cur = conn.cursor()
+    api = shodan.Shodan(API_KEY)
 
-    def __init__(self, shodan_client: ShodanClient):
-        self.shodan_client = shodan_client
-
-    def run(self, targets: Iterable[str]) -> None:
-        """Execute a single collection cycle."""
-        conn = get_connection()
-        cur = conn.cursor()
+    for ip in TARGETS:
+        ip = ip.strip()
+        if not ip:
+            continue
         try:
-            for ip in targets:
-                self._process_target(cur, ip)
+            result = api.host(ip)
+            for item in result.get("data", []):
+                port = item.get("port")
+                product = item.get("product", "unknown")
+                vulns = item.get("vulns", [])
+                risk_score = len(vulns) + 1
+                cur.execute("""
+                    INSERT INTO scan_results (ip, port, product, vulns, risk_score, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (ip, port, product, Json(vulns), risk_score, datetime.utcnow()))
             conn.commit()
-        finally:
-            cur.close()
-            conn.close()
+            time.sleep(REQUEST_DELAY)
+        except shodan.APIError as e:
+            print(f"Shodan API error for {ip}: {e}")
+        except Exception as e:
+            print(f"Error scanning {ip}: {e}")
 
-    def _process_target(self, cursor, ip: str) -> None:
-        """Fetch Shodan data and insert into DB."""
-        result = self.shodan_client.scan_host(ip)
-        for item in result.get("data", []):
-            port = item.get("port")
-            product = item.get("product", "unknown")
-            vulns = item.get("vulns", [])
-            risk_score = len(vulns) + 1
+    cur.close()
+    conn.close()
+    print(f"Batch completed at {datetime.utcnow()}. Sleeping {INTERVAL} seconds...")
+    time.sleep(INTERVAL)
 
-            cursor.execute(
-                """
-                INSERT INTO scan_results (
-                    ip, port, product, vulns, risk_score, timestamp
-                )
-                VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                (ip, port, product, Json(vulns), risk_score, datetime.utcnow())
-            )
