@@ -1,10 +1,9 @@
 import time
 import logging
 from datetime import datetime
-from typing import List
+from typing import List, Dict, Any
 
 from shodan_monitor.db import (
-    get_connection,
     init_db,
     start_scan,
     finish_scan,
@@ -14,13 +13,6 @@ from shodan_monitor.db import (
 from shodan_monitor.shodan_client import ShodanClient
 from shodan_monitor.config import Config
 
-# -------------------------------------------------------------------
-# Logging setup
-# -------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -35,9 +27,6 @@ class ShodanCollector:
         init_db()
 
     def run(self, targets: List[str]) -> None:
-        """
-        Main loop: runs the collector periodically based on interval.
-        """
         interval = getattr(Config, "INTERVAL_SECONDS", 6 * 3600)
         request_delay = getattr(Config, "REQUEST_DELAY", 1)
 
@@ -49,7 +38,7 @@ class ShodanCollector:
         )
 
         while True:
-            self._run_once(targets, request_delay)
+            self._run_once(targets)
             logger.info(
                 "Batch completed at %s. Sleeping %s seconds",
                 datetime.utcnow().isoformat(),
@@ -57,14 +46,14 @@ class ShodanCollector:
             )
             time.sleep(interval)
 
-    def _run_once(self, targets: List[str], request_delay: float) -> None:
+    def _run_once(self, targets: List[str]) -> None:
         """
         Executes a single scan batch over all targets.
         """
         logger.info("Starting new scan batch")
 
-        scan_id = start_scan(targets_count=len(targets))
-        logger.info("Created scan session id=%s", scan_id)
+        scan_run_id = start_scan(len(targets))
+        logger.info("Started scan session id=%s", scan_run_id)
 
         for ip in targets:
             ip = ip.strip()
@@ -77,14 +66,18 @@ class ShodanCollector:
                 result = self.client.scan_host(ip)
                 services = result.get("data", [])
 
-                logger.info("Target %s returned %d services", ip, len(services))
+                logger.info(
+                    "Target %s returned %d services",
+                    ip,
+                    len(services),
+                )
 
-                # insert or update target
+                # insert target metadata
                 target_id = get_or_create_target(
                     ip=ip,
+                    asn=result.get("asn"),
                     org=result.get("org"),
                     country=result.get("country_name"),
-                    asn=result.get("asn"),
                 )
 
                 for svc in services:
@@ -105,8 +98,8 @@ class ShodanCollector:
                     )
 
                     insert_service(
-                        scan_id=scan_id,
                         target_id=target_id,
+                        scan_id=scan_run_id,
                         port=port,
                         transport=transport,
                         product=product,
@@ -116,14 +109,14 @@ class ShodanCollector:
                         risk_score=risk_score,
                     )
 
-                logger.info("Committed %d services for target %s", len(services), ip)
-                time.sleep(request_delay)
+                time.sleep(Config.REQUEST_DELAY)
 
             except Exception:
                 logger.exception("Error scanning target %s", ip)
 
-        finish_scan(scan_id)
-        logger.info("Scan batch finished | session id=%s", scan_id)
+        finish_scan(scan_run_id)
+        logger.info("Scan batch finished")
+
 
 
 
