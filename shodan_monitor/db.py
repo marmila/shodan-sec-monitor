@@ -104,7 +104,7 @@ def init_db() -> None:
 # -------------------------------------------------------------------
 # Insert helpers
 # -------------------------------------------------------------------
-def insert_scan_run(cur, targets_count: Optional[int] = None) -> uuid.UUID:
+def insert_scan_run(cur, targets_count: Optional[int] = None) -> str:
     scan_id = uuid.uuid4()
     cur.execute(
         """
