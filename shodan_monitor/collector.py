@@ -84,7 +84,7 @@ class ShodanCollector:
 
                     insert_service(
                         cur=cur,
-                        scan_run_id=scan_run_id,
+                        scan_run_id=scan_run_id,  # ora convertito in stringa in db.py
                         target_id=target_id,
                         port=port,
                         transport=transport,
@@ -106,6 +106,7 @@ class ShodanCollector:
         cur.close()
         conn.close()
         logger.info("Scan batch finished")
+
 
 
 
