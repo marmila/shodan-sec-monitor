@@ -22,16 +22,15 @@ class ShodanCollector:
         self.client = client
         logger.info("Initializing database schema")
         init_db()
+        self.interval = getattr(Config, "INTERVAL_SECONDS", 6 * 3600)
+        self.request_delay = getattr(Config, "REQUEST_DELAY", 1)
 
     def run(self, targets: List[str]) -> None:
-        interval = getattr(Config, "INTERVAL_SECONDS", 6 * 3600)
-        request_delay = getattr(Config, "REQUEST_DELAY", 1)
-
         logger.info(
             "Collector started | targets=%s | interval=%ss | request_delay=%ss",
             targets,
-            interval,
-            request_delay,
+            self.interval,
+            self.request_delay,
         )
 
         while True:
@@ -39,19 +38,15 @@ class ShodanCollector:
             logger.info(
                 "Batch completed at %s. Sleeping %s seconds",
                 datetime.utcnow().isoformat(),
-                interval,
+                self.interval,
             )
-            time.sleep(interval)
+            time.sleep(self.interval)
 
     def _run_once(self, targets: List[str]) -> None:
-        """
-        Executes a single scan batch over all targets.
-        """
         logger.info("Starting new scan batch")
         conn = get_connection()
         cur = conn.cursor()
 
-        # crea una nuova scan_run
         scan_run_id = insert_scan_run(cur, targets_count=len(targets))
         logger.info("Created scan_run id=%s", scan_run_id)
 
@@ -68,7 +63,6 @@ class ShodanCollector:
 
                 logger.info("Target %s returned %d services", ip, len(services))
 
-                # inserisci o aggiorna il target
                 target_id = insert_target(
                     cur=cur,
                     scan_run_id=scan_run_id,
@@ -103,7 +97,7 @@ class ShodanCollector:
 
                 conn.commit()
                 logger.info("Committed %d services for target %s", len(services), ip)
-                time.sleep(request_delay)
+                time.sleep(self.request_delay)
 
             except Exception:
                 conn.rollback()
@@ -112,6 +106,7 @@ class ShodanCollector:
         cur.close()
         conn.close()
         logger.info("Scan batch finished")
+
 
 
 
