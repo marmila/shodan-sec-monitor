@@ -93,6 +93,7 @@ Optional:
 INTERVAL_SECONDS  # Seconds between scan batches (default 21600)
 REQUEST_DELAY     # Seconds delay between API requests (default 1.0)
 
+```
 ## Notes
 
 All components are containerized, with PYTHONPATH=/app configured for Python imports.
