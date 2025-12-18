@@ -3,7 +3,7 @@
 ## Project Overview
 
 `shodan-sec-monitor` is a Python-based collector that periodically gathers passive internet exposure data from Shodan. The project is designed to provide with structured visibility on external-facing services and potential vulnerabilities, without performing any active scanning.
-This project collects data in a **structured PostgreSQL database**, enabling further analysis, dashboards, and correlation with other observability tools.
+This project collects data in a structured PostgreSQL database, enabling further analysis, dashboards, and correlation with other observability tools.
 
 ---
 
@@ -43,7 +43,7 @@ For each target, the collector stores:
   - Known vulnerabilities (CVE IDs)
   - Computed risk score (`1 + number of vulnerabilities`)
 
-This data allows building **dashboards**, tracking external service exposure, and assessing relative risk.
+This data allows building dashboards, tracking external service exposure, and assessing relative risk.
 
 ---
 
@@ -52,7 +52,7 @@ This data allows building **dashboards**, tracking external service exposure, an
 Currently, targets are specified via environment variables. This allows flexible adjustment without changing code.
 
 - Initially, only a few public resolvers (like Google and Cloudflare) were used as targets for testing.
-- The collector is designed to scale to a **larger set of external targets**.
+- The collector is designed to scale to a larger set of external targets.
 - Targets should be carefully selected to avoid scanning systems not owned by your organization (the collector only uses Shodan's passive API).
 
 ---
@@ -60,7 +60,7 @@ Currently, targets are specified via environment variables. This allows flexible
 ## Limitations
 
 - **Shodan dependency**: The collector relies entirely on Shodan’s public API; missing data on Shodan will not be collected.
-- **Passive data**: No active scanning is performed. This is **strictly passive**, safe, and compliant with external networks.
+- **Passive data**: No active scanning is performed. This is strictly passive, safe, and compliant with external networks.
 - **Rate limiting**: The collector respects configurable delays between API calls.
 - **Future improvements**: Integration with MongoDB or other observability pipelines for faster aggregation or historical analysis.
 
@@ -68,11 +68,11 @@ Currently, targets are specified via environment variables. This allows flexible
 
 ## Future Work
 
-- Implement **dashboards** and reporting tools for collected data.
-- Expand **target lists** and make them dynamic.
+- Implement dashboards and reporting tools for collected data.
+- Expand target lists and make them dynamic.
 - Improve database schema to support more detailed service metadata.
 - Implement structured logging across all components.
-- Optionally, add **MongoDB** backend for analytics or faster ingestion of large volumes.
+- Optionally, add MongoDB backend for analytics or faster ingestion of large volumes.
 
 ---
 
