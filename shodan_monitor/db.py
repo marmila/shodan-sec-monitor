@@ -7,14 +7,23 @@ from typing import Generator, List, Optional
 import psycopg2
 from psycopg2.extras import DictCursor, Json
 
+# -------------------------------------------------------------------
+# Logging
+# -------------------------------------------------------------------
 logger = logging.getLogger("shodan.db")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
 
+# -------------------------------------------------------------------
+# DB config
+# -------------------------------------------------------------------
 DB_HOST = os.getenv("DB_HOST", "shodan-postgres.shodan-monitor.svc.cluster.local")
 DB_NAME = os.getenv("DB_NAME", "shodan")
 DB_USER = os.getenv("DB_USER", "shodan")
 DB_PASS = os.getenv("DB_PASS", "shodan")
 
+# -------------------------------------------------------------------
+# Connection helpers
+# -------------------------------------------------------------------
 def get_connection():
     return psycopg2.connect(
         host=DB_HOST,
@@ -38,9 +47,14 @@ def get_cursor() -> Generator:
         cur.close()
         conn.close()
 
+# -------------------------------------------------------------------
+# Schema initialization
+# -------------------------------------------------------------------
 def init_db() -> None:
     logger.info("Initializing database schema")
+
     with get_cursor() as cur:
+        # ---- scan runs
         cur.execute("""
             CREATE TABLE IF NOT EXISTS scan_runs (
                 id UUID PRIMARY KEY,
@@ -51,6 +65,7 @@ def init_db() -> None:
             )
         """)
 
+        # ---- targets
         cur.execute("""
             CREATE TABLE IF NOT EXISTS targets (
                 id SERIAL PRIMARY KEY,
@@ -63,6 +78,7 @@ def init_db() -> None:
             )
         """)
 
+        # ---- services
         cur.execute("""
             CREATE TABLE IF NOT EXISTS services (
                 id SERIAL PRIMARY KEY,
@@ -79,11 +95,15 @@ def init_db() -> None:
             )
         """)
 
+        # ---- indexes
         cur.execute("CREATE INDEX IF NOT EXISTS idx_services_target_port ON services(target_id, port)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_scan_runs_started ON scan_runs(started_at)")
 
     logger.info("Database schema ready")
 
+# -------------------------------------------------------------------
+# Insert helpers
+# -------------------------------------------------------------------
 def insert_scan_run(cur, targets_count: Optional[int] = None) -> uuid.UUID:
     scan_id = uuid.uuid4()
     cur.execute(
@@ -91,7 +111,7 @@ def insert_scan_run(cur, targets_count: Optional[int] = None) -> uuid.UUID:
         INSERT INTO scan_runs (id, targets_count, status)
         VALUES (%s, %s, 'running')
         """,
-        (str(scan_id), targets_count)
+        (str(scan_id), targets_count)  # convert UUID to string
     )
     logger.info("Inserted scan_run id=%s", scan_id)
     return scan_id
@@ -129,7 +149,7 @@ def insert_service(
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, now())
         """,
         (
-            str(scan_run_id),
+            str(scan_run_id),  # convert UUID to string
             target_id,
             port,
             transport,
@@ -141,6 +161,7 @@ def insert_service(
         )
     )
     logger.debug("Inserted service for target_id=%s port=%s", target_id, port)
+
 
 
 
