@@ -99,6 +99,12 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_services_target_port ON services(target_id, port)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_scan_runs_started ON scan_runs(started_at)")
 
+        # ---- unique constraint (NO DUPLICATES)
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uniq_services_target_port_transport
+            ON services (target_id, port, transport)
+        """)
+
     logger.info("Database schema ready")
 
 # -------------------------------------------------------------------
@@ -147,6 +153,14 @@ def insert_service(
         INSERT INTO services
         (scan_run_id, target_id, port, transport, product, version, cpe, vulns, risk_score, timestamp)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+        ON CONFLICT (target_id, port, transport)
+        DO UPDATE SET
+            product = EXCLUDED.product,
+            version = EXCLUDED.version,
+            cpe = EXCLUDED.cpe,
+            vulns = EXCLUDED.vulns,
+            risk_score = EXCLUDED.risk_score,
+            timestamp = now()
         """,
         (
             str(scan_run_id),  # convert UUID to string
@@ -161,6 +175,7 @@ def insert_service(
         )
     )
     logger.debug("Inserted service for target_id=%s port=%s", target_id, port)
+
 
 
 
