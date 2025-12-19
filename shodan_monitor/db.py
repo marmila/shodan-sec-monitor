@@ -148,6 +148,7 @@ def insert_service(
     vulns: List[str],
     risk_score: int
 ) -> None:
+    # ---- Use ON CONFLICT to handle duplicates safely
     cur.execute(
         """
         INSERT INTO services
@@ -155,12 +156,13 @@ def insert_service(
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, now())
         ON CONFLICT (target_id, port, transport)
         DO UPDATE SET
-            product = EXCLUDED.product,
-            version = EXCLUDED.version,
-            cpe = EXCLUDED.cpe,
-            vulns = EXCLUDED.vulns,
-            risk_score = EXCLUDED.risk_score,
-            timestamp = now()
+            product     = EXCLUDED.product,
+            version     = EXCLUDED.version,
+            cpe         = EXCLUDED.cpe,
+            vulns       = EXCLUDED.vulns,
+            risk_score  = EXCLUDED.risk_score,
+            timestamp   = now(),
+            scan_run_id = EXCLUDED.scan_run_id
         """,
         (
             str(scan_run_id),  # convert UUID to string
@@ -174,7 +176,8 @@ def insert_service(
             risk_score,
         )
     )
-    logger.debug("Inserted service for target_id=%s port=%s", target_id, port)
+    logger.debug("Inserted/updated service for target_id=%s port=%s", target_id, port)
+
 
 
 
