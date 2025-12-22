@@ -20,7 +20,7 @@ The goal is to help security, SRE, and DevOps teams understand how their public 
 
 ---
 
-## architecture overview
+## Architecture overview
 
 1. The collector reads a list of target IP addresses
 2. For each IP, it queries the Shodan API
@@ -35,7 +35,7 @@ This makes it easy to answer questions like:
 
 ---
 
-## requirements
+## Requirements
 
 - Shodan API key
 - PostgreSQL database
@@ -43,9 +43,9 @@ This makes it easy to answer questions like:
 
 ---
 
-## configuration
+## Configuration
 
-### required environment variables
+### Required environment variables
 
 ```
 SHODAN_API_KEY=your_shodan_api_key
@@ -58,13 +58,13 @@ TARGETS_WEB=1.2.3.4,5.6.7.8
 
 ```TARGETS_WEB``` must be a comma-separated list of IPv4 addresses you own or are authorised to monitor.
 
-### optional environment variables
+### Optional environment variables
 ```
 INTERVAL_SECONDS=21600   # default: 6 hours
 REQUEST_DELAY=1.0        # delay between Shodan API requests
 LOG_LEVEL=INFO
 ```
-### running with docker
+### Running with docker
 
 Example docker run command:
 
@@ -82,7 +82,7 @@ docker run -d \
 
 Make sure PostgreSQL is reachable from the container.
 
-### running on kubernetes (k3s example)
+### Running on kubernetes (k3s example)
 
 Example configuration using ConfigMap and Secret:
 
@@ -107,7 +107,7 @@ stringData:
 
 Mount these into the container as environment variables.
 
-### usage
+### Usage
 validate configuration
 ```python scripts/run_collector.py --validate```
 
@@ -211,7 +211,7 @@ docker build \
   -t your-registry/shodan-sec-monitor:latest \
   --push .
 ```
-###security considerations
+### Security considerations
 
 This tool is passive only. It uses data already indexed by Shodan. It does not probe or scan hosts-
 Only monitor IP addresses you own or are authorised to monitor.
