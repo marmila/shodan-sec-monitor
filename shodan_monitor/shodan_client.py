@@ -64,7 +64,6 @@ class ShodanClient:
                 if limit and count >= limit:
                     break
 
-                # Piccola pausa per non saturare la connessione se necessario
                 if count % 100 == 0:
                     time.sleep(self.request_delay)
 
