@@ -54,7 +54,6 @@ class ShodanClient:
         """
         logger.info(f"Executing global threat search: {query}")
         try:
-            # search_cursor è il metodo più efficiente per scaricare molti dati
             cursor = self.api.search_cursor(query)
             count = 0
 
