@@ -1,8 +1,8 @@
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from shodan_monitor.config import get_config
 from shodan_monitor.shodan_client import ShodanClient
@@ -10,7 +10,6 @@ from shodan_monitor.db import (
     save_raw_banner,
     update_intel_stats,
     log_intel_history,
-    get_database_stats,
     close_connections,
     init_databases
 )
@@ -25,7 +24,7 @@ class IntelligenceStats:
     total_processed: int = 0
     new_banners: int = 0
     errors: int = 0
-    start_time: Optional[datetime] = None
+    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 class ShodanCollector:
     """
@@ -36,13 +35,10 @@ class ShodanCollector:
     def __init__(self, shodan_client: ShodanClient):
         self.client = shodan_client
         self.config = get_config()
-        # Ensure DB tables exist
         init_databases()
 
     def run(self):
-        """
-        Main execution loop. Optimized for Kubernetes (k3s) deployment.
-        """
+        """Main execution loop optimized for k3s."""
         logger.info("Starting Shodan Intelligence Sentinel collector loop")
 
         with GracefulShutdown() as shutdown:
@@ -58,8 +54,6 @@ class ShodanCollector:
                 logger.info(f"Cycle completed in {format_duration(loop_timer.duration)}. "
                             f"Sleeping for {interval} seconds...")
 
-                # Sleep in small increments to remain responsive to shutdown signals
-                stop_time = datetime.utcnow() + tuple([0, 0, interval]) # simplified for example
                 wait_until = time.time() + interval
                 while time.time() < wait_until and not shutdown.should_exit:
                     time.sleep(5)
@@ -86,37 +80,36 @@ class ShodanCollector:
             self._process_profile(profile, shutdown)
 
     def _process_profile(self, profile: Dict[str, Any], shutdown: GracefulShutdown):
-        """
-        Executes search for a specific profile and updates both MongoDB and PostgreSQL.
-        """
+        """Executes search for a specific profile and updates storage."""
         name = profile['name']
         query = profile['query']
-        stats = IntelligenceStats(profile_name=name, start_time=datetime.utcnow())
+        stats = IntelligenceStats(profile_name=name)
 
         country_distribution = {}
 
         try:
-            # Using cursor-based search for efficiency
             for banner in self.client.search_intel(query):
                 if shutdown.should_exit:
                     break
 
-                # 1. Save raw data to MongoDB for forensics
                 save_raw_banner(banner, name)
 
-                # 2. Update local aggregation for PostgreSQL
                 stats.total_processed += 1
-                country_code = banner.get('location', {}).get('country_code', 'Unknown')
+                location = banner.get('location')
+                if location:
+                    country_code = location.get('country_code', 'Unknown')
+                else:
+                    country_code = 'Unknown'
+
                 country_distribution[country_code] = country_distribution.get(country_code, 0) + 1
 
                 if stats.total_processed % 100 == 0:
                     logger.info(f"[{name}] Processed {stats.total_processed} banners...")
 
-            # 3. Finalize analytics in PostgreSQL
             update_intel_stats(name, stats.total_processed, country_distribution)
             log_intel_history(name, stats.total_processed)
 
-            logger.info(f"Completed profile {name}: {stats.total_processed} total assets found.")
+            logger.info(f"Completed profile {name}: {stats.total_processed} assets found.")
 
         except Exception as e:
             logger.error(f"Error processing profile {name}: {e}")
