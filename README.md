@@ -1,223 +1,64 @@
-# shodan-sec-monitor
+# Shodan Intelligence Sentinel (SIS)
 
-Shodan Security Monitor is a passive security monitoring tool that uses the Shodan API to track the external exposure of IP addresses you own or manage.
+Shodan Intelligence Sentinel is a modular threat intelligence engine designed for global exposure tracking and vulnerability analytics. Unlike traditional asset monitors, SIS pivots towards proactive threat hunting by leveraging the Shodan Search API to analyze large-scale attack surfaces, command-and-control (C2) infrastructures, and industrial control systems (ICS).
 
-The project does **not perform active scanning**. It relies exclusively on Shodan’s indexed data to collect information about exposed services, software versions, and known vulnerabilities, storing everything in PostgreSQL for historical analysis and reporting.
+The project implements a polyglot persistence strategy, utilizing PostgreSQL for structured time-series analytics and MongoDB for raw data retention, providing a robust foundation for historical forensic analysis.
 
-The goal is to help security, SRE, and DevOps teams understand how their public attack surface evolves over time.
+## Core Intelligence Modules
 
----
+* **Exposed Data Analytics**: Tracking of unauthenticated database instances including MongoDB, Elasticsearch, and Redis.
+* **C2 Infrastructure Hunting**: Identification of Command & Control frameworks through SSL/TLS fingerprints and banner hashing (e.g., Cobalt Strike, Metasploit, PoshC2).
+* **Industrial Guard**: Global monitoring of ICS/SCADA protocols such as Modbus, Siemens S7, and BACnet.
+* **CMS Exposure Trends**: Real-time analysis of patch-rates and vulnerabilities across major CMS platforms like WordPress and Drupal.
 
-## features
+## Architecture and Data Strategy
 
-- passive monitoring via Shodan API
-- no active scanning or probing
-- collection of services, banners, and vulnerabilities
-- PostgreSQL storage for historical tracking
-- simple service risk scoring
-- supports one-shot runs or scheduled execution
-- designed to run locally, in Docker, or Kubernetes
+The system is designed to handle high-volume data ingestion from the Shodan Search API (Freelancer Plan) with a focus on data integrity and observability.
 
----
+1. **Extraction**: Asynchronous collection using the Shodan Search Cursor to handle large result sets without pagination overhead.
+2. **Polyglot Storage**:
+    * **PostgreSQL**: Stores normalized metadata, country distribution, and risk-score trends. Optimized for Grafana visualization.
+    * **MongoDB**: Retains full, unstructured JSON banners for retroactive threat hunting and forensic verification.
+3. **Observability**: Native integration with Prometheus for security metrics and Alertmanager for real-time notification on threat spikes.
 
-## Architecture overview
+## Tech Stack
 
-1. The collector reads a list of target IP addresses
-2. For each IP, it queries the Shodan API
-3. Results are normalized and stored in PostgreSQL
-4. Each execution is tracked as a scan run
-5. Services and vulnerabilities can be queried over time
-
-This makes it easy to answer questions like:
-- what new services appeared last week?
-- which IPs expose high-risk software?
-- how has the attack surface changed over time?
-
----
-
-## Requirements
-
-- Shodan API key
-- PostgreSQL database
-- Python 3.10+ (if running without Docker)
-
----
+* **Language**: Python 3.10+
+* **Databases**: PostgreSQL 14+, MongoDB 6.0+
+* **Infrastructure**: Designed for Docker and K3s (Kubernetes)
+* **Monitoring**: Prometheus, Grafana, Alertmanager
 
 ## Configuration
 
-### Required environment variables
+SIS uses a YAML-based profile system to define intelligence targets.
 
 ```
-SHODAN_API_KEY=your_shodan_api_key
-DB_HOST=postgres
-DB_NAME=shodan
-DB_USER=shodan
-DB_PASS=shodan
-TARGETS_WEB=1.2.3.4,5.6.7.8
+# Example Intelligence Profile
+- name: cobalt_strike_tracker
+  query: "hash:-2007783223"
+  severity: high
+  frequency: 6h
+
+- name: exposed_industrial_modbus
+  query: "port:502"
+  severity: critical
+  frequency: 12h
 ```
+## Required Environment Variables
 
-```TARGETS_WEB``` must be a comma-separated list of IPv4 addresses you own or are authorised to monitor.
+```SHODAN_API_KEY```: Shodan Freelancer/Corporate API Key.
+```DB_TYPE```: Set to 'polyglot' for dual-database mode.
+```POSTGRES_URL```: Connection string for PostgreSQL analytics.
+```MONGO_URL```: Connection string for MongoDB raw storage.
 
-### Optional environment variables
-```
-INTERVAL_SECONDS=21600   # default: 6 hours
-REQUEST_DELAY=1.0        # delay between Shodan API requests
-LOG_LEVEL=INFO
-```
-### Running with docker
+## Deployment
+### Kubernetes (k3s)
+The collector is optimized for k3s deployments, utilizing ConfigMaps for profile management and Secrets for API credentials. It supports graceful shutdown via SIGTERM to ensure database connection pooling is handled correctly.
 
-Example docker run command:
+```kubectl apply -f k8s/sentinel-deployment.yaml```
++
+## Security and Ethics
+This tool is strictly for defensive security research and threat intelligence gathering. It operates passively by querying Shodan's indexed data. Users must comply with Shodan's Terms of Service and ensure all intelligence activities remain within legal boundaries.
 
-```
-docker run -d \
-  --name shodan-sec-monitor \
-  -e SHODAN_API_KEY="your_key" \
-  -e TARGETS_WEB="1.2.3.4,5.6.7.8" \
-  -e DB_HOST="postgres" \
-  -e DB_NAME="shodan" \
-  -e DB_USER="shodan" \
-  -e DB_PASS="shodan" \
-  shodan-sec-monitor
-```
-
-Make sure PostgreSQL is reachable from the container.
-
-### Running on kubernetes (k3s example)
-
-Example configuration using ConfigMap and Secret:
-
-```
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: shodan-config
-data:
-  TARGETS_WEB: "1.2.3.4,5.6.7.8"
-  INTERVAL_SECONDS: "21600"
-
-apiVersion: v1
-kind: Secret
-metadata:
-  name: shodan-secrets
-type: Opaque
-stringData:
-  SHODAN_API_KEY: your_key
-  DB_PASS: shodan
-```
-
-Mount these into the container as environment variables.
-
-### Usage
-validate configuration
-```python scripts/run_collector.py --validate```
-
-
-### Checks connectivity to Shodan and PostgreSQL without running a scan.
-
-Run a single collection
-```python scripts/run_collector.py --once```
-
-
-### Executes one scan cycle and exits.
-
-Run continuously
-
-```python scripts/run_collector.py```
-
-
-### Runs in a loop using INTERVAL_SECONDS.
-
-Show statistics
-
-```python scripts/run_collector.py --stats```
-
-
-### Displays information about stored scans and targets.
-
-Cleanup stuck scans
-
-``` python scripts/clean_stuck_scans.py --cleanup-stuck```
-
-Marks interrupted or unfinished scan runs as failed.
-
-### Database schema overview
-
-The PostgreSQL database stores:
-
-```scan_runs```
-Tracks each execution, start/end time, and status
-
-```targets```
-IP metadata such as ASN, country, and organisation
-
-```services```
-Open ports, detected software, versions, banners, and risk score
-
-```vulns```
-Known vulnerabilities (CVE-based) associated with services
-
-### Example queries
-
-High-risk services
-
-```
-SELECT
-  t.ip,
-  s.port,
-  s.product,
-  s.version,
-  s.risk_score
-FROM services s
-JOIN targets t ON s.target_id = t.id
-WHERE s.risk_score > 70
-ORDER BY s.risk_score DESC;
-```
-
-Scan history
-
-```
-SELECT
-  status,
-  COUNT(*) AS runs,
-  AVG(finished_at - started_at) AS avg_duration
-FROM scan_runs
-GROUP BY status;
-```
-
-Services with vulnerabilities
-
-```
-SELECT
-  t.ip,
-  s.port,
-  s.product,
-  s.vulns
-FROM services s
-JOIN targets t ON s.target_id = t.id
-WHERE jsonb_array_length(s.vulns) > 0;
-```
-
-### Building the image
-
-Multi-architecture build (amd64, arm64, arm/v7):
-
-```./build.sh```
-
-Manual build:
-
-```
-docker build \
-  --platform linux/amd64,linux/arm64,linux/arm/v7 \
-  -t your-registry/shodan-sec-monitor:latest \
-  --push .
-```
-### Security considerations
-
-This tool is passive only. It uses data already indexed by Shodan. It does not probe or scan hosts-
-Only monitor IP addresses you own or are authorised to monitor.
-Ensure your Shodan API plan supports the request volume.
-
-### Licence
-
+## License
 MIT License.
-Use responsibly and only on authorised assets.
