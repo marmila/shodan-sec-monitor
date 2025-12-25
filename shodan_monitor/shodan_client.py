@@ -71,9 +71,7 @@ class ShodanClient:
             raise
 
     def get_internetdb_data(self, ip: str) -> Optional[Dict[str, Any]]:
-        """
-        Fetches rapid enrichment data from InternetDB (Free, no credits used).
-        """
+        """Fetches rapid enrichment data from InternetDB (Free, no credits used)."""
         try:
             response = requests.get(f"{self.INTERNETDB_URL}{ip}", timeout=5)
             if response.status_code == 200:
@@ -85,10 +83,7 @@ class ShodanClient:
 
     @backoff.on_exception(backoff.expo, APIError, max_tries=3)
     def get_host_details(self, ip: str) -> Dict[str, Any]:
-        """
-        Deep lookup for a specific host. Consumes 1 Shodan credit.
-        Use sparingly for high-priority targets.
-        """
+        """Deep lookup for a specific host. Consumes 1 Shodan credit."""
         try:
             time.sleep(self.request_delay)
             return self.api.host(ip)
@@ -100,8 +95,8 @@ class ShodanClient:
         """Check API key limits and plan information."""
         try:
             return self.api.info()
-        except APIError as e:
-            logger.error(f"Failed to fetch API info: {e}")
+        except Exception as e:
+            logger.error(f"Failed to fetch Shodan API info: {e}")
             return {}
 
 class ShodanClientPool:

@@ -48,6 +48,21 @@ class ShodanCollector:
                 with loop_timer:
                     self.collect_all_profiles(shutdown)
 
+                # --- SHODAN QUOTA REPORT (v2.0.2) ---
+                if not shutdown.should_exit:
+                    try:
+                        api_info = self.client.get_api_info()
+                        credits = api_info.get('query_credits', 'N/A')
+                        plan = api_info.get('plan', 'N/A')
+
+                        logger.info("--- SHODAN QUOTA REPORT ---")
+                        logger.info(f"Plan: {plan.upper()}")
+                        logger.info(f"Remaining Query Credits: {credits}")
+                        logger.info("---------------------------")
+                    except Exception as e:
+                        logger.warning(f"Could not retrieve Shodan quota report: {e}")
+                # ------------------------------------
+
                 if shutdown.should_exit:
                     break
 
