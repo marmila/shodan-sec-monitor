@@ -102,3 +102,18 @@ def setup_logging(level: str = "INFO", log_file: str = None):
         format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
         handlers=handlers
     )
+
+def sanitize_for_mongo(obj):
+    """
+    Recursively converts integers that exceed MongoDB's 8-byte limit into strings.
+    BSON (MongoDB) supports signed 64-bit integers (-2^63 to 2^63-1).
+    """
+    if isinstance(obj, dict):
+        return {k: sanitize_for_mongo(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_mongo(i) for i in obj]
+    elif isinstance(obj, int):
+        # 9,223,372,036,854,775,807 is the max for an 8-byte signed integer
+        if obj > 9223372036854775807 or obj < -9223372036854775808:
+            return str(obj)
+    return obj

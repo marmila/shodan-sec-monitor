@@ -15,7 +15,6 @@ intelligence_profiles:
 
   # --- CMS & WEB APPS ---
   - name: wordpress_vulnerable_versions
-    # Cerchiamo versioni vecchie (es. 5.x) o header specifici
     query: "http.component:wordpress"
     severity: medium
     tags: [cms, wordpress]

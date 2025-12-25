@@ -1,5 +1,6 @@
 import os
 import logging
+import hashlib
 from contextlib import contextmanager
 from typing import Generator, List, Optional, Dict, Any
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 
 from shodan_monitor.config import get_config
+from shodan_monitor.utils import sanitize_for_mongo
 
 logger = logging.getLogger("shodan.db")
 
@@ -74,19 +76,51 @@ def get_pg_cursor(autocommit: bool = False) -> Generator:
 
 # --- Intelligence Storage Functions ---
 
+def get_last_checkpoint(profile_name: str) -> Optional[datetime]:
+    """
+    Retrieve the last successful collection timestamp for a profile from PostgreSQL.
+    """
+    try:
+        with get_pg_cursor() as cur:
+            cur.execute(
+                "SELECT last_updated FROM intel_stats WHERE profile_name = %s",
+                (profile_name,)
+            )
+            row = cur.fetchone()
+            return row['last_updated'] if row else None
+    except Exception as e:
+        logger.error(f"Failed to fetch checkpoint for {profile_name}: {e}")
+        return None
+
 def save_raw_banner(banner: Dict[str, Any], profile_name: str):
     """
-    Store the complete Shodan JSON banner into MongoDB.
-    Uses timezone-aware UTC datetime for the collection timestamp.
+    Store the complete Shodan JSON banner into MongoDB using a deterministic _id.
+    Prevents duplicates and handles large integers.
     """
     try:
         collection = get_mongo_collection()
-        banner['sis_metadata'] = {
+
+        # 1. Sanitize data for MongoDB 8-byte int limits
+        sanitized_data = sanitize_for_mongo(banner)
+
+        # 2. Generate a deterministic unique ID for the banner
+        # Prevents duplicates if the same asset is scanned multiple times
+        ip = banner.get('ip_str', '0.0.0.0')
+        port = banner.get('port', 0)
+        ts = banner.get('timestamp', '')
+        unique_string = f"{ip}:{port}:{ts}"
+        banner_id = hashlib.sha256(unique_string.encode()).hexdigest()
+
+        sanitized_data['_id'] = banner_id
+        sanitized_data['sis_metadata'] = {
             'profile_name': profile_name,
             'collected_at': datetime.now(timezone.utc),
             'processed': False
         }
-        collection.insert_one(banner)
+
+        # 3. Upsert: replace if exists, insert if new
+        collection.replace_one({'_id': banner_id}, sanitized_data, upsert=True)
+
     except Exception as e:
         logger.error(f"Failed to save raw banner to MongoDB: {e}")
 
@@ -130,7 +164,7 @@ def log_intel_history(profile_name: str, count: int):
 # --- Initialization and Maintenance ---
 
 def init_databases():
-    """Initialize the PostgreSQL schema for the Threat Intelligence focus."""
+    """Initialize the PostgreSQL schema."""
     commands = [
         """
         CREATE TABLE IF NOT EXISTS intel_stats (
@@ -173,7 +207,7 @@ def get_database_stats() -> Dict[str, Any]:
     return stats
 
 def close_connections():
-    """Close all database connections (call during graceful shutdown)."""
+    """Close all database connections."""
     global _pg_pool, _mongo_client
     if _pg_pool:
         _pg_pool.closeall()

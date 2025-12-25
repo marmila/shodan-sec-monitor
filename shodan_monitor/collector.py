@@ -11,7 +11,8 @@ from shodan_monitor.db import (
     update_intel_stats,
     log_intel_history,
     close_connections,
-    init_databases
+    init_databases,
+    get_last_checkpoint
 )
 from shodan_monitor.utils import GracefulShutdown, Timer, format_duration
 
@@ -29,7 +30,7 @@ class IntelligenceStats:
 class ShodanCollector:
     """
     Main collector for Shodan Intelligence Sentinel.
-    Iterates through threat profiles and performs global searches.
+    Iterates through threat profiles and performs global searches with incremental support.
     """
 
     def __init__(self, shodan_client: ShodanClient):
@@ -80,15 +81,27 @@ class ShodanCollector:
             self._process_profile(profile, shutdown)
 
     def _process_profile(self, profile: Dict[str, Any], shutdown: GracefulShutdown):
-        """Executes search for a specific profile and updates storage."""
+        """Executes incremental search for a profile and updates storage."""
         name = profile['name']
-        query = profile['query']
+        base_query = profile['query']
         stats = IntelligenceStats(profile_name=name)
+
+        # Check for existing checkpoint to enable incremental ingest
+        last_checkpoint = get_last_checkpoint(name)
+        active_query = base_query
+
+        if last_checkpoint:
+            # Shodan date format for filters is DD/MM/YYYY
+            date_str = last_checkpoint.strftime("%d/%m/%Y")
+            active_query = f"{base_query} after:{date_str}"
+            logger.info(f"Using incremental filter for {name}: {date_str}")
+        else:
+            logger.info(f"No checkpoint found for {name}. Performing full collection.")
 
         country_distribution = {}
 
         try:
-            for banner in self.client.search_intel(query):
+            for banner in self.client.search_intel(active_query):
                 if shutdown.should_exit:
                     break
 
@@ -96,20 +109,18 @@ class ShodanCollector:
 
                 stats.total_processed += 1
                 location = banner.get('location')
-                if location:
-                    country_code = location.get('country_code', 'Unknown')
-                else:
-                    country_code = 'Unknown'
+                country_code = location.get('country_code', 'Unknown') if location else 'Unknown'
 
                 country_distribution[country_code] = country_distribution.get(country_code, 0) + 1
 
                 if stats.total_processed % 100 == 0:
                     logger.info(f"[{name}] Processed {stats.total_processed} banners...")
 
+            # Update PostgreSQL with latest stats and set the new checkpoint
             update_intel_stats(name, stats.total_processed, country_distribution)
             log_intel_history(name, stats.total_processed)
 
-            logger.info(f"Completed profile {name}: {stats.total_processed} assets found.")
+            logger.info(f"Completed profile {name}: {stats.total_processed} banners processed.")
 
         except Exception as e:
             logger.error(f"Error processing profile {name}: {e}")
