@@ -131,15 +131,19 @@ class ShodanCollector:
                 if stats.total_processed % 100 == 0:
                     logger.info(f"[{name}] Processed {stats.total_processed} banners...")
 
-            # Update PostgreSQL with latest stats and set the new checkpoint
-            update_intel_stats(name, stats.total_processed, country_distribution)
-            log_intel_history(name, stats.total_processed)
-
             logger.info(f"Completed profile {name}: {stats.total_processed} banners processed.")
 
         except Exception as e:
-            logger.error(f"Error processing profile {name}: {e}")
+            logger.error(f"Error processing profile {name} at banner {stats.total_processed}: {e}")
             stats.errors += 1
+
+        finally:
+            # v2.0.3: Always save progress if at least one banner was processed.
+            # This ensures checkpoints are updated even if the API cursor fails mid-run.
+            if stats.total_processed > 0:
+                logger.info(f"Saving partial progress for {name}: {stats.total_processed} assets.")
+                update_intel_stats(name, stats.total_processed, country_distribution)
+                log_intel_history(name, stats.total_processed)
 
     def run_once(self):
         """Run a single collection cycle across all profiles."""
@@ -147,6 +151,7 @@ class ShodanCollector:
         with GracefulShutdown() as shutdown:
             self.collect_all_profiles(shutdown)
         close_connections()
+
 
 
 

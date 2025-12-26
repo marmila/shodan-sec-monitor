@@ -33,7 +33,7 @@ class ShodanClient:
 
     INTERNETDB_URL = "https://internetdb.shodan.io/"
 
-    def __init__(self, api_key: str, max_retries: int = 3, request_delay: float = 1.0):
+    def __init__(self, api_key: str, max_retries: int = 5, request_delay: float = 2.0):
         if not api_key:
             raise ValueError("Shodan API key is required")
 
@@ -44,7 +44,8 @@ class ShodanClient:
     @backoff.on_exception(
         backoff.expo,
         (APIError, requests.exceptions.RequestException),
-        max_tries=3,
+        max_tries=10,
+        max_time=300,
         giveup=lambda e: isinstance(e, APIError) and "Rate limit" not in str(e)
     )
     def search_intel(self, query: str, limit: Optional[int] = None) -> Generator[Dict[str, Any], None, None]:
